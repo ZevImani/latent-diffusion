@@ -20,6 +20,8 @@ from pytorch_lightning.utilities import rank_zero_info
 from ldm.data.base import Txt2ImgIterableBaseDataset
 from ldm.util import instantiate_from_config
 
+import h5py
+import matplotlib.pyplot as plt
 
 def get_parser(**parser_kwargs):
     def str2bool(v):
@@ -400,7 +402,8 @@ class CUDACallback(Callback):
         torch.cuda.synchronize(trainer.root_gpu)
         self.start_time = time.time()
 
-    def on_train_epoch_end(self, trainer, pl_module, outputs):
+    # def on_train_epoch_end(self, trainer, pl_module, outputs):
+    def on_train_epoch_end(self, trainer, pl_module): ## https://github.com/CompVis/latent-diffusion/issues/85#issuecomment-1164705823
         torch.cuda.synchronize(trainer.root_gpu)
         max_memory = torch.cuda.max_memory_allocated(trainer.root_gpu) / 2 ** 20
         epoch_time = time.time() - self.start_time
@@ -414,6 +417,41 @@ class CUDACallback(Callback):
         except AttributeError:
             pass
 
+class CheckpointEveryNSteps(Callback):
+    """
+    Save a checkpoint every N steps, instead of Lightning's default that checkpoints
+    based on validation loss.
+    """
+
+    def __init__(
+        self,
+        save_step_frequency=2000,
+        prefix="N-Step-Checkpoint",
+        use_modelcheckpoint_filename=False,
+    ):
+        """
+        Args:
+            save_step_frequency: how often to save in steps
+            prefix: add a prefix to the name, only used if
+                use_modelcheckpoint_filename=False
+            use_modelcheckpoint_filename: just use the ModelCheckpoint callback's
+                default filename, don't use ours.
+        """
+        self.save_step_frequency = save_step_frequency
+        self.prefix = prefix
+        self.use_modelcheckpoint_filename = use_modelcheckpoint_filename
+
+    def on_batch_end(self, trainer: pl.Trainer, _):
+        """ Check if we should save a checkpoint after every train batch """
+        epoch = trainer.current_epoch
+        global_step = trainer.global_step
+        if global_step % self.save_step_frequency == 0:
+            if self.use_modelcheckpoint_filename:
+                filename = trainer.checkpoint_callback.filename
+            else:
+                filename = "{}_epoch={}_global_step={}.ckpt".format(self.prefix, epoch, global_step)
+            ckpt_path = os.path.join(trainer.checkpoint_callback.dirpath, filename)
+            trainer.save_checkpoint(ckpt_path)
 
 if __name__ == "__main__":
     # custom parser to specify config files, train, test and debug mode,
@@ -713,6 +751,122 @@ if __name__ == "__main__":
         signal.signal(signal.SIGUSR1, melk)
         signal.signal(signal.SIGUSR2, divein)
 
+        ## test datasets
+        # if 1: 
+        #     my_loader = data.train_dataloader()
+
+        #     for my_idx, my_batch in enumerate(my_loader):
+        #         print(my_batch.shape)
+        #         exit() 
+
+            
+
+        ## Parameters for saving latents 
+        save_latents = False 
+        plot_latents = False 
+        custom_latents = True 
+        if save_latents: 
+            my_latents = np.load("lartpc_ae_latent_rescale_fix.npy")
+        # hdf5_name = "lartpc64_ae_50k_test.h5"
+        hdf5_name = "lartpc_score_gen_latents.h5"
+
+        if save_latents:
+            print("Extracting Latents & Recos")
+
+            start_time = time.time()
+            prev_time = time.time() 
+
+            with h5py.File(hdf5_name, 'w') as hdf:
+
+                if 'train' in hdf5_name: 
+                    my_loader = data.train_dataloader() 
+                else: 
+                    print('Using validation dataloader')
+                    my_loader = data.val_dataloader()
+
+                for my_idx, my_batch in enumerate(my_loader):
+
+                    if custom_latents:
+                        my_bs = config.data.params.batch_size
+                        try: 
+                            z_override = my_latents[(my_idx*my_bs):(my_idx*my_bs)+my_bs].transpose(0,3,1,2)
+                            z_override = torch.tensor(z_override, dtype=torch.float)
+                        except Exception as e: 
+                            print('End time', int(time.time()-start_time))
+                            print("My Error:", e) 
+                            exit()
+                        if my_idx == 0: 
+                            print("My Custom Latent Shape:", z_override.shape)
+                    else: 
+                        z_override = None 
+
+                    if my_idx % 250 == 0:
+                        print("idx", my_idx, "Time =", int(time.time()-prev_time))
+                        prev_time = time.time()
+
+                    # 16*3125 = 50,000
+                    if my_idx >= 3125: 
+                        print('End time', int(time.time()-start_time))
+                        exit() 
+
+                    my_out = model.get_input(my_batch, 'image', \
+                        return_first_stage_outputs=True, z_override=z_override)
+                    '''
+                    model.get_input = [z, cond, x, reco]
+                    z.shape = (16, 3, 16, 16)
+                    x,reco.shape = (16, 1, 64, 64)
+                    '''
+
+                    my_z = my_out[0].detach().cpu()
+                    my_x = my_out[2].detach().cpu()
+                    my_reco = my_out[3].detach().cpu()
+                    
+                    ## Create a group for each batch
+                    grp = hdf.create_group(f'batch_{my_idx}')
+                    
+                    ## Save the values to the HDF5 file
+                    grp.create_dataset('input', data=my_x)
+                    grp.create_dataset('latent', data=my_z)
+                    grp.create_dataset('reco', data=my_reco)
+
+                    # Plot x, z, reco
+                    if plot_latents: 
+                        fig, axes = plt.subplots(5, 3, figsize=(4, 6))
+                        offset = 0 #63 
+
+                        # Plot the images
+                        for i in range(5):
+
+                            # Original input
+                            input_img = my_x[offset+i, 0].reshape(64,64,1)
+                            axes[i, 0].imshow(input_img, cmap='gray', interpolation='none')
+                            axes[i, 0].axis('off')
+                            if i == 0:
+                                axes[i, 0].set_title('Input')
+                            
+                            # Latent representation 
+                            latent_img = my_z[offset+i].reshape(16,16,3)
+                            axes[i, 1].imshow(latent_img)#, cmap='viridis')
+                            axes[i, 1].axis('off')
+                            if i == 0:
+                                axes[i, 1].set_title('Latent')
+                            
+                            # Reconstructed image
+                            reco_img = my_reco[offset+i, 0].reshape(64,64,1)
+                            axes[i, 2].imshow(reco_img, cmap='gray', interpolation='none')
+                            axes[i, 2].axis('off')
+                            if i == 0:
+                                axes[i, 2].set_title('Reco')
+
+                        # Adjust layout
+                        plt.tight_layout()
+                        plt.savefig("zimgs.png")
+                        print("Saved zimg.png")
+                        exit() 
+            
+            # Do not train if saving latents  
+            exit()
+              
         # run
         if opt.train:
             try:

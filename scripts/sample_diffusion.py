@@ -100,6 +100,7 @@ def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=Non
     x_sample = model.decode_first_stage(sample)
 
     log["sample"] = x_sample
+    log["latent"] = sample
     log["time"] = t1 - t0
     log['throughput'] = sample.shape[0] / (t1 - t0)
     print(f'Throughput for this batch: {log["throughput"]}')
@@ -117,6 +118,7 @@ def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None
     # path = logdir
     if model.cond_stage_model is None:
         all_images = []
+        all_latents = [] 
 
         print(f"Running unconditional sampling for {n_samples} samples")
         for _ in trange(n_samples // batch_size, desc="Sampling Batches (unconditional)"):
@@ -124,7 +126,9 @@ def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None
                                              vanilla=vanilla, custom_steps=custom_steps,
                                              eta=eta)
             n_saved = save_logs(logs, logdir, n_saved=n_saved, key="sample")
+            n_saved = save_logs(logs, logdir, n_saved=n_saved, key="latent")
             all_images.extend([custom_to_np(logs["sample"])])
+            all_latents.extend([custom_to_np(logs["latent"])])
             if n_saved >= n_samples:
                 print(f'Finish after generating {n_saved} samples')
                 break
@@ -133,6 +137,12 @@ def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None
         shape_str = "x".join([str(x) for x in all_img.shape])
         nppath = os.path.join(nplog, f"{shape_str}-samples.npz")
         np.savez(nppath, all_img)
+
+        all_lat = np.concatenate(all_latents, axis=0)
+        all_lat = all_lat[:n_samples]
+        shape_str = "x".join([str(x) for x in all_lat.shape])
+        nppath = os.path.join(nplog, f"{shape_str}-latents.npz")
+        np.savez(nppath, all_lat)
 
     else:
        raise NotImplementedError('Currently only sampling for unconditional models supported.')

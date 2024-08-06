@@ -1,0 +1,65 @@
+model:
+  base_learning_rate: 4.5e-6
+  target: ldm.models.autoencoder.AutoencoderKL
+  params:
+    monitor: "val/rec_loss"
+    embed_dim: 3
+    lossconfig:
+      target: ldm.modules.losses.LPIPSWithDiscriminator
+      params:
+        disc_in_channels: 1 ## Added to handle grayscale images 
+        disc_start: 9999999999 ## never turn discriminator on
+        kl_weight: 0.000001
+        disc_weight: 0.5
+        
+
+    ddconfig:
+      double_z: True
+      z_channels: 3
+      resolution: 64
+      in_channels: 1  
+      out_ch: 1 
+      ch: 128
+      ch_mult: [1, 2, 4]  # num_down = len(ch_mult)-1 ##
+      num_res_blocks: 2
+      attn_resolutions: [ ]
+      dropout: 0.0
+
+## Modified from autoencoder_kl_64x64x3.yaml 
+
+## Input = 64x64x1 
+## Latent = 16x16x3
+
+data:
+  target: main.DataModuleFromConfig
+  params:
+    batch_size: 16 
+    wrap: True
+    train:
+      target: ldm.data.protons64.protons64Train 
+      params:
+        size: 64 
+        events_per_batch: 128
+        num_batches: 1152 ## set by hand (TODO)
+        # interpolation: bilinear
+    validation:
+      target: ldm.data.protons64.protons64Validation 
+      params:
+        size: 64 
+        events_per_batch: 128
+        num_batches: 152 ## set by hand (TODO)
+        # interpolation: bilinear
+
+lightning:
+  callbacks:
+    image_logger:
+      target: main.ImageLogger
+      params:
+        batch_frequency: 1000
+        max_images: 8
+        increase_log_steps: True
+
+  trainer:
+    benchmark: False 
+    accumulate_grad_batches: 2
+    max_epochs: 10 

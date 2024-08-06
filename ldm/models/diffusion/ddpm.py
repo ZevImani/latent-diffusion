@@ -286,6 +286,10 @@ class DDPM(pl.LightningModule):
                 loss = torch.nn.functional.mse_loss(target, pred)
             else:
                 loss = torch.nn.functional.mse_loss(target, pred, reduction='none')
+        # elif self.loss_type == 'emd': 
+        #     pass 
+        #     if mean: 
+        #         pass 
         else:
             raise NotImplementedError("unknown loss type '{loss_type}'")
 
@@ -652,13 +656,17 @@ class LatentDiffusion(DDPM):
 
     @torch.no_grad()
     def get_input(self, batch, k, return_first_stage_outputs=False, force_c_encode=False,
-                  cond_key=None, return_original_cond=False, bs=None):
+                  cond_key=None, return_original_cond=False, bs=None, z_override=None):
         x = super().get_input(batch, k)
         if bs is not None:
             x = x[:bs]
         x = x.to(self.device)
         encoder_posterior = self.encode_first_stage(x)
-        z = self.get_first_stage_encoding(encoder_posterior).detach()
+        if z_override is None: 
+            z = self.get_first_stage_encoding(encoder_posterior).detach()
+        else: 
+            z = z_override
+        ## Zev here 
 
         if self.model.conditioning_key is not None:
             if cond_key is None:
@@ -1027,6 +1035,7 @@ class LatentDiffusion(DDPM):
         loss_simple = self.get_loss(model_output, target, mean=False).mean([1, 2, 3])
         loss_dict.update({f'{prefix}/loss_simple': loss_simple.mean()})
 
+        self.logvar = self.logvar.to(self.device) ## https://github.com/CompVis/latent-diffusion/issues/228
         logvar_t = self.logvar[t].to(self.device)
         loss = loss_simple / torch.exp(logvar_t) + logvar_t
         # loss = loss_simple / torch.exp(self.logvar) + self.logvar
@@ -1190,6 +1199,7 @@ class LatentDiffusion(DDPM):
             assert x0 is not None
             assert x0.shape[2:3] == mask.shape[2:3]  # spatial size has to match
 
+        ## Zev Here
         for i in iterator:
             ts = torch.full((b,), i, device=device, dtype=torch.long)
             if self.shorten_cond_schedule:
@@ -1236,7 +1246,8 @@ class LatentDiffusion(DDPM):
 
         if ddim:
             ddim_sampler = DDIMSampler(self)
-            shape = (self.channels, self.image_size, self.image_size)
+            # shape = (self.channels, self.image_size, self.image_size)
+            shape = (3, 16, 16) ## Zev edit: hardcoded latent shape 
             samples, intermediates =ddim_sampler.sample(ddim_steps,batch_size,
                                                         shape,cond,verbose=False,**kwargs)
 
@@ -1249,9 +1260,9 @@ class LatentDiffusion(DDPM):
 
     @torch.no_grad()
     def log_images(self, batch, N=8, n_row=4, sample=True, ddim_steps=200, ddim_eta=1., return_keys=None,
-                   quantize_denoised=True, inpaint=True, plot_denoise_rows=False, plot_progressive_rows=True,
+                   quantize_denoised=True, inpaint=False, plot_denoise_rows=False, plot_progressive_rows=True,
                    plot_diffusion_rows=True, **kwargs):
-
+        ## Zev edits: inpaint=False 
         use_ddim = ddim_steps is not None
 
         log = dict()
@@ -1279,6 +1290,7 @@ class LatentDiffusion(DDPM):
             if ismap(xc):
                 log["original_conditioning"] = self.to_rgb(xc)
 
+        ## Zev Here
         if plot_diffusion_rows:
             # get diffusion row
             diffusion_row = list()
@@ -1346,7 +1358,7 @@ class LatentDiffusion(DDPM):
         if plot_progressive_rows:
             with self.ema_scope("Plotting Progressives"):
                 img, progressives = self.progressive_denoising(c,
-                                                               shape=(self.channels, self.image_size, self.image_size),
+                                                               shape=(3,16,16), #(self.channels, self.image_size, self.image_size),
                                                                batch_size=N)
             prog_row = self._get_denoise_row_from_list(progressives, desc="Progressive Generation")
             log["progressive_row"] = prog_row

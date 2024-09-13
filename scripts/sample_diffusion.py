@@ -277,6 +277,8 @@ if __name__ == "__main__":
         ckpt = os.path.join(logdir, "model.ckpt")
 
     base_configs = sorted(glob.glob(os.path.join(logdir, "config.yaml")))
+    # print("Z:", base_configs)
+    # exit()
     opt.base = base_configs
 
     configs = [OmegaConf.load(cfg) for cfg in opt.base]

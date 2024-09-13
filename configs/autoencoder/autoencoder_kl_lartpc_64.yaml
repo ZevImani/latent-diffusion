@@ -7,8 +7,8 @@ model:
     lossconfig:
       target: ldm.modules.losses.LPIPSWithDiscriminator
       params:
-        disc_in_channels: 1 ## Added to handle grayscale images 
-        disc_start: 9999999999 ## never turn discriminator on
+        disc_in_channels: 1 ## Specifiy data channels  
+        disc_start: 500 ## when to turn discriminator on 
         kl_weight: 0.000001
         disc_weight: 0.5
         
@@ -20,7 +20,8 @@ model:
       in_channels: 1  
       out_ch: 1 
       ch: 128
-      ch_mult: [1, 2, 4]  # num_down = len(ch_mult)-1 ##
+      ch_mult: [1, 2, 4]  # num_down = len(ch_mult)-1
+      # ch_mult: [1, 2, 4, 8]  # num_down = len(ch_mult)-1 ## small: added 8
       num_res_blocks: 2
       attn_resolutions: [ ]
       dropout: 0.0
@@ -35,19 +36,20 @@ data:
   params:
     batch_size: 16 
     wrap: True
+    num_workers: 4 ## default is batch_size*2 
     train:
       target: ldm.data.protons64.protons64Train 
       params:
         size: 64 
         events_per_batch: 128
-        num_batches: 1152 ## set by hand (TODO)
+        num_batches: 1152 ## set by hand (TODO: auto)
         # interpolation: bilinear
     validation:
       target: ldm.data.protons64.protons64Validation 
       params:
         size: 64 
         events_per_batch: 128
-        num_batches: 152 ## set by hand (TODO)
+        num_batches: 152 ## set by hand (TODO: auto)
         # interpolation: bilinear
 
 lightning:
@@ -62,4 +64,6 @@ lightning:
   trainer:
     benchmark: False 
     accumulate_grad_batches: 2
-    max_epochs: 10 
+    max_epochs: 20 
+    # max_steps: 1000             ## Not working with autoencoder?   
+    val_check_interval: 2000   ## Validation Frequency  

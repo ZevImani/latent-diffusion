@@ -1,12 +1,41 @@
 #!/bin/bash
 #SBATCH -c 1                	# Number of cores (-c)
 #SBATCH -t 0-00:10      	    # Runtime in D-HH:MM, minimum of 10 minutes
-#SBATCH -p gpu_test					# Partition to submit to
-#SBATCH --mem=7000          	# Memory pool for all cores (see also --mem-per-cpu)
-#SBATCH -o zzldm_%j.out  	 	# File to which STDOUT will be written, %j inserts jobid
-#SBATCH -e zzldm_%j.err  	 	# File to which STDERR will be written, %j inserts jobid
-#SBATCH --gres=gpu:1	 	# Request GPUs (number and/or type)
+#SBATCH -p test_gpu					# Partition to submit to
+#SBATCH --mem=5000          	# Memory pool for all cores (see also --mem-per-cpu)
+#SBATCH -o zldm_cpu_sample_%j.out  	 	# File to which STDOUT will be written, %j inserts jobid
+#SBATCH -e zldm_cpu_sample_%j.err  	 	# File to which STDERR will be written, %j inserts jobid
 #SBATCH --signal=SIGTERM@120	# Terminate program @x seconds before time limit 
+
+# export CUDA_VISIBLE_DEVICES=0
+
+## Sample LDM - using main.py
+conda run -n ldm python3 -u main.py \
+	--base configs/latent-diffusion/lartpc_64-ldm-kl-8.yaml \
+	--logdir protons64_sample \
+	--scale_lr False \
+	--sample True \
+	--train 
+
+
+# conda run -n ldm python3 -u scripts/sample_diffusion.py \
+# 	--resume protons64_ldm_logs_v3/2024-08-30T01-25-12_lartpc_64-ldm-kl-8/checkpoints/last.ckpt \
+# 	--logdir protons64_ldm_sample_logs \
+# 	--vanilla_sample True \
+# 	--n_samples 50000 \
+# 	--batch_size 128 
+
+	#  -c <\#ddim steps> -e <\#eta> 
+
+## Sample LDM 
+# conda run -n ldm python3 -u main.py \
+# 	--base configs/latent-diffusion/lartpc_64-ldm-kl-8.yaml \
+# 	--logdir protons64_sample \
+# 	--scale_lr False \
+# 	--sample True \
+# 	--train \
+# 	--gpus 0,
+
 
 ## Train LDM 
 # conda run -n ldm python3 -u main.py \
@@ -14,28 +43,7 @@
 # 	--logdir protons64_ldm_logs_v3 \
 # 	--scale_lr False \
 # 	--train \
-# 	--gpus 0,
-
-# conda run -n ldm python3 -u main.py \
-# 	--base configs/latent-diffusion/lartpc_64-ldm-kl-8.yaml \
-# 	--logdir zzz_log \
-# 	--scale_lr False \
-# 	--save_latents "zzz" \
-# 	--plot_latents True \
-# 	--train \
-# 	--gpus 0,
-
-## Sample LDM 
-conda run -n ldm python3 -u main.py \
-	--base configs/latent-diffusion/lartpc_64-ldm-kl-8.yaml \
-	--logdir protons64_sample \
-	--scale_lr False \
-	--sample True \
-	--train \
-	--gpus 0,
-
-	# --custom_latents protons64_ae_posteriors_gen_unscaled.npy\
-
+# 	--gpus 0,1
 
 	# --save_latents protons64_ae_disc_latents_test \
 	# --save_latents zz_test \
@@ -49,11 +57,13 @@ conda run -n ldm python3 -u main.py \
 
 ## Sample LDM 
 # conda run -n ldm python3 -u scripts/sample_diffusion.py \
-# 	--resume /n/home11/zimani/latent-diffusion/lartpc64_ldm_logs_v3/2024-06-12T01-47-26_lartpc_64-ldm-kl-8/checkpoints/last.ckpt \
+# 	--resume protons64_ldm_logs_v3/2024-08-30T01-25-12_lartpc_64-ldm-kl-8/checkpoints/checkpoints/last.ckpt \
 # 	--logdir lartpc64_sample_logs \
 # 	--n_samples 800 \
 # 	--batch_size 16 \
 
+
+# python3 -u scripts/sample_diffusion.py --resume protons64_ldm_logs_v3/2024-08-30T01-25-12_lartpc_64-ldm-kl-8/checkpoints/last.ckpt --logdir lartpc64_sample_logs --n_samples 800 --batch_size 16 
 
 
 ## Flags 

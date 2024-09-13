@@ -1,3 +1,16 @@
 __pycache__/
+*.egg-info
 *.err
 *.out
+
+## Log dirs
+*_logs*
+score_gen_latent_data
+protons64_sample
+
+## Temporary 
+z_imgs.png
+
+## builds with LDM repo (unmodified) 
+taming
+src

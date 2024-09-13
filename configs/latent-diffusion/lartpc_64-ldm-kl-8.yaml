@@ -5,7 +5,7 @@ model:
     linear_start: 0.0015
     linear_end: 0.0155
     num_timesteps_cond: 1
-    log_every_t: 200
+    log_every_t: 300  ## Logging: frequency for progressive denoising 
     timesteps: 1000
     loss_type: l1
     first_stage_key: "image"
@@ -45,8 +45,8 @@ model:
       params:
         embed_dim: 3
         monitor: "val/rec_loss"
-        # ckpt_path: "lartpc64_logs_v2/checkpoints/epoch=000007.ckpt"
-        ckpt_path: "protons64_ae_logs/2024-08-04T10-44-35_autoencoder_kl_lartpc_64/checkpoints/last.ckpt"
+        ckpt_path: "protons64_ae_disc_logs/2024-08-09T16-34-42_autoencoder_kl_lartpc_64/checkpoints/epoch=000009.ckpt"
+        # ckpt_path: "protons64_ae_disc_small_logs/2024-08-29T16-51-34_autoencoder_kl_lartpc_64/checkpoints/last.ckpt"
         ddconfig:
           double_z: True
           z_channels: 3
@@ -55,13 +55,14 @@ model:
           out_ch: 1
           ch: 128
           ch_mult: [1,2,4]  # num_down = len(ch_mult)-1
+          # ch_mult: [1,2,4,8]  # num_down = len(ch_mult)-1
           num_res_blocks: 2
           attn_resolutions: [ ]
           dropout: 0.0
         lossconfig:
           target: torch.nn.Identity
           disc_in_channels: 1       ## Added from AE config  
-          disc_start: 9999999999999 ## Added from AE config 
+          # disc_start: 9999999999999 ## Added from AE config 
 
     cond_stage_config: "__is_unconditional__"
 
@@ -89,16 +90,17 @@ lightning:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 4000
+        batch_frequency: 500
         max_images: 8
         increase_log_steps: False
     
-    checkpoint_iter_freq: 
-      target: main.CheckpointEveryNSteps
-      params: 
-        save_step_frequency: 99999999999  
+    # checkpoint_iter_freq: 
+    #   target: main.CheckpointEveryNSteps
+    #   params: 
+    #     save_step_frequency: 1000  
 
   trainer:
     benchmark: False 
-    # max_steps: 100
+    # max_steps: 10000
     max_epochs: 10
+    val_check_interval: 1000   ## Validation Frequency  

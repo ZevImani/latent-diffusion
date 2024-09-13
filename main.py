@@ -22,6 +22,7 @@ from ldm.util import instantiate_from_config
 
 import h5py
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 def get_parser(**parser_kwargs):
     def str2bool(v):
@@ -121,6 +122,38 @@ def get_parser(**parser_kwargs):
         const=True,
         default=True,
         help="scale base-lr by ngpu * batch_size * n_accumulate",
+    )
+    parser.add_argument(
+        "--save_latents",
+        type=str,
+        nargs="?",
+        const=True,
+        default="",
+        help="directory to save latents, will only train if not included",
+    )
+    parser.add_argument(
+        "--plot_latents",
+        type=str2bool,
+        nargs="?",
+        const=True,
+        default=False,
+        help="option to plot latents (x, z, reco)",
+    )
+    parser.add_argument(
+        "--custom_latents",
+        type=str,
+        nargs="?",
+        const=True,
+        default="",
+        help="path to numpy file of latents to decode",
+    )
+    parser.add_argument(
+        "--sample",
+        type=str2bool,
+        nargs="?",
+        const=True,
+        default=False,
+        help="option to save 50,000 samples to logdir",
     )
     return parser
 
@@ -377,7 +410,7 @@ class ImageLogger(Callback):
             try:
                 self.log_steps.pop(0)
             except IndexError as e:
-                print(e)
+                # print(e) # pop from empty list: https://github.com/CompVis/latent-diffusion/issues/299
                 pass
             return True
         return False
@@ -572,6 +605,12 @@ if __name__ == "__main__":
         # model
         model = instantiate_from_config(config.model)
 
+        # set model to gpu 
+        try: 
+            model.cuda() 
+        except Exception as e: 
+            print("GPU Error:", e) 
+
         # trainer and callbacks
         trainer_kwargs = dict()
 
@@ -749,120 +788,221 @@ if __name__ == "__main__":
         import signal
 
         signal.signal(signal.SIGUSR1, melk)
-        signal.signal(signal.SIGUSR2, divein)
+        signal.signal(signal.SIGUSR2, divein)         
 
-        ## test datasets
-        # if 1: 
-        #     my_loader = data.train_dataloader()
+        # How many latents or samples to save
+        max_imgs = 50000
 
-        #     for my_idx, my_batch in enumerate(my_loader):
-        #         print(my_batch.shape)
-        #         exit() 
+        if opt.sample:  
+            model.eval()
+            # print("LOGDIR:", logdir)
 
-            
+            ## Make empty directory for samples 
+            sample_dir = opt.logdir + "/samples/"
+            # if os.path.exists(sample_dir):
+            #     if os.listdir(sample_dir):
+            #         print("Error", sample_dir, "is not empty" )
+            #         exit() 
+            # else: 
+            #     os.makedirs(sample_dir)
+            if not os.path.exists(sample_dir):
+                os.makedirs(sample_dir)
+            print("Saving samples to:", sample_dir)
 
-        ## Parameters for saving latents 
-        save_latents = False 
-        plot_latents = False 
-        custom_latents = True 
-        if save_latents: 
-            my_latents = np.load("lartpc_ae_latent_rescale_fix.npy")
-        # hdf5_name = "lartpc64_ae_50k_test.h5"
-        hdf5_name = "lartpc_score_gen_latents.h5"
+            my_bs = bs
 
-        if save_latents:
-            print("Extracting Latents & Recos")
+            my_time = time.time()
+
+            for my_idx in tqdm(range(max_imgs // my_bs)):
+                
+                # my_sample = model.p_sample_loop(None, shape=my_shape, return_intermediates=False)
+                
+                ## Sample Latent 
+                my_z = model.sample(cond=None, shape=(my_bs,3,16,16))
+
+                ## Decode Latent 
+                my_sample = model.decode_first_stage(my_z)
+
+                # my_sample = my_sample.transpose(0,3,1,2) #(b,c,h,w)
+
+                # print(my_sample.shape)
+
+                job_id = os.environ['SLURM_JOB_ID']
+
+                # np.save(sample_dir+"batch_"+str(my_idx), my_sample)
+                np.save(sample_dir+"batch_"+str(my_idx)+str(job_id), my_sample)
+
+                print(my_z.shape)
+                print(int(time.time()-my_time))
+                exit()
+
+                if my_idx % 100 == 0: 
+                    print("idx", my_idx, "Time =", time.time())
+
+            exit() 
+             
+
+        if opt.save_latents != "":
+            model.eval()
+
+            print("Saving latents", str(opt.save_latents))
+
+            if opt.custom_latents != "": 
+                my_latents = np.load(opt.custom_latents)
+                print("Using custom latents:", str(opt.custom_latents))
 
             start_time = time.time()
             prev_time = time.time() 
 
-            with h5py.File(hdf5_name, 'w') as hdf:
+            ## Make empty directory for latents 
+            if os.path.exists(opt.save_latents):
+                if os.listdir(opt.save_latents):
+                    print("Error", opt.save_latents, "is not empty" )
+                    exit() 
+            else: 
+                os.makedirs(opt.save_latents)
+                print("Saving latents to", opt.save_latents)
 
-                if 'train' in hdf5_name: 
-                    my_loader = data.train_dataloader() 
-                else: 
-                    print('Using validation dataloader')
-                    my_loader = data.val_dataloader()
+            if 'train' in opt.save_latents: 
+                print('Using Training Dataloader')
+                my_loader = data.train_dataloader() 
+            else: 
+                print('Using Validation Dataloader')
+                my_loader = data.val_dataloader()
 
-                for my_idx, my_batch in enumerate(my_loader):
+            for my_idx, my_batch in enumerate(my_loader):
 
-                    if custom_latents:
-                        my_bs = config.data.params.batch_size
-                        try: 
-                            z_override = my_latents[(my_idx*my_bs):(my_idx*my_bs)+my_bs].transpose(0,3,1,2)
-                            z_override = torch.tensor(z_override, dtype=torch.float)
-                        except Exception as e: 
-                            print('End time', int(time.time()-start_time))
-                            print("My Error:", e) 
-                            exit()
-                        if my_idx == 0: 
-                            print("My Custom Latent Shape:", z_override.shape)
-                    else: 
-                        z_override = None 
+                # Hack to iterate batch for plotting latents purposes 
+                batch_skips = 0
+                if my_idx < batch_skips and opt.plot_latents: 
+                    continue 
 
-                    if my_idx % 250 == 0:
-                        print("idx", my_idx, "Time =", int(time.time()-prev_time))
-                        prev_time = time.time()
-
-                    # 16*3125 = 50,000
-                    if my_idx >= 3125: 
+                # Get custom latents: single use dataloader  
+                if opt.custom_latents != "":
+                    my_bs = config.data.params.batch_size
+                    try: 
+                        z_override = my_latents[(my_idx*my_bs):(my_idx*my_bs)+my_bs].transpose(0,3,1,2)
+                        z_override = torch.tensor(z_override, dtype=torch.float)
+                    except Exception as e: 
                         print('End time', int(time.time()-start_time))
-                        exit() 
+                        print("My Error:", e) 
+                        exit()
+                    if my_idx == 0: 
+                        print("My Custom Latent Shape:", z_override.shape)
+                else: 
+                    z_override = None 
 
-                    my_out = model.get_input(my_batch, 'image', \
-                        return_first_stage_outputs=True, z_override=z_override)
-                    '''
-                    model.get_input = [z, cond, x, reco]
-                    z.shape = (16, 3, 16, 16)
-                    x,reco.shape = (16, 1, 64, 64)
-                    '''
+                # Time tracker 
+                if my_idx % 250 == 0:
+                    print("idx", my_idx, "Time =", int(time.time()-prev_time))
+                    prev_time = time.time()
 
-                    my_z = my_out[0].detach().cpu()
-                    my_x = my_out[2].detach().cpu()
-                    my_reco = my_out[3].detach().cpu()
+                # Stop at maximum requested latents (max_imgs) 
+                if my_idx >= max_imgs//config.data.params.batch_size: 
+                    print('End time', int(time.time()-start_time))
+                    exit() 
+
+                '''
+                model.get_input = [z, cond, x, reco]
+                z.shape = (16, 3, 16, 16)
+                x,reco.shape = (16, 1, 64, 64)
+                shape = (b, c, h, w)
+                '''
+
+                if my_idx == 2: 
+                    z_override = 0.5*z0 + 0.5*z1 
+                
+                my_out = model.get_input(my_batch, 'image', \
+                    return_first_stage_outputs=True, z_override=z_override)
+
+                my_z = my_out[0].detach().cpu()
+                my_x = my_out[2].detach().cpu()
+                my_reco = my_out[3].detach().cpu()
+                
+                ## Hack to interpolate between latents
+                if my_idx == 0: 
+                    z0 = my_out[0].clone()
+                    x0 = my_out[2].clone() 
+                    print("Pass 0 stats")
+                    print("x:", torch.min(my_x.flatten()), torch.max(my_x.flatten()))
+                    print("z:", torch.min(my_z.flatten()), torch.max(my_z.flatten()))
+                    print("reco:", torch.min(my_reco.flatten()), torch.max(my_reco.flatten()))
+                    # x0 = my_out[2].clone() 
+                    continue 
                     
-                    ## Create a group for each batch
-                    grp = hdf.create_group(f'batch_{my_idx}')
-                    
-                    ## Save the values to the HDF5 file
-                    grp.create_dataset('input', data=my_x)
-                    grp.create_dataset('latent', data=my_z)
-                    grp.create_dataset('reco', data=my_reco)
+                if my_idx == 1: 
+                    z1 = my_out[0].clone() 
+                    x1 = my_out[2].clone()
+                    print("Pass 1 stats")
+                    print("x:", torch.min(my_x.flatten()), torch.max(my_x.flatten()))
+                    print("z:", torch.min(my_z.flatten()), torch.max(my_z.flatten()))
+                    print("reco:", torch.min(my_reco.flatten()), torch.max(my_reco.flatten()))
+                    # x1 = my_out[2].clone() 
+                    continue 
 
-                    # Plot x, z, reco
-                    if plot_latents: 
-                        fig, axes = plt.subplots(5, 3, figsize=(4, 6))
-                        offset = 0 #63 
+                if my_idx == 2: 
+                    print("Interpolated stats")
+                    print("x:", torch.min(my_x.flatten()), torch.max(my_x.flatten()))
+                    print("z:", torch.min(my_z.flatten()), torch.max(my_z.flatten()))
+                    print("reco:", torch.min(my_reco.flatten()), torch.max(my_reco.flatten()))
+                    # exit()
+                    # pass 
+                    my_x = 0.5*x0 + 0.5*x1
+                    my_x = my_x.detach().cpu()
 
-                        # Plot the images
-                        for i in range(5):
 
-                            # Original input
-                            input_img = my_x[offset+i, 0].reshape(64,64,1)
-                            axes[i, 0].imshow(input_img, cmap='gray', interpolation='none')
-                            axes[i, 0].axis('off')
-                            if i == 0:
-                                axes[i, 0].set_title('Input')
-                            
-                            # Latent representation 
-                            latent_img = my_z[offset+i].reshape(16,16,3)
-                            axes[i, 1].imshow(latent_img)#, cmap='viridis')
-                            axes[i, 1].axis('off')
-                            if i == 0:
-                                axes[i, 1].set_title('Latent')
-                            
-                            # Reconstructed image
-                            reco_img = my_reco[offset+i, 0].reshape(64,64,1)
-                            axes[i, 2].imshow(reco_img, cmap='gray', interpolation='none')
-                            axes[i, 2].axis('off')
-                            if i == 0:
-                                axes[i, 2].set_title('Reco')
+                # Setup for Reparmeterization trick in Score Model 
+                # my_out, encoder_posterior = model.get_input(my_batch, 'image', \
+                #     return_first_stage_outputs=True, z_override=z_override, \
+                #     return_posterior=True) 
+                # posterior = encoder_posterior.parameters.cpu() 
 
-                        # Adjust layout
-                        plt.tight_layout()
-                        plt.savefig("zimgs.png")
-                        print("Saved zimg.png")
-                        exit() 
+                # Save batch as npy file 
+                if not opt.plot_latents : 
+                    # np.save(opt.save_latents+"/latents_batch_"+str(my_idx), my_z)
+                    # np.save(opt.save_latents+"/inputs_batch_"+str(my_idx), my_x)
+                    # np.save(opt.save_latents+"/recos_batch_"+str(my_idx), my_reco)
+                    np.save(opt.save_latents+"/posterior_batch_"+str(my_idx), posterior)
+
+                # Plot x, z, reco
+                if opt.plot_latents : 
+
+                    print("Z =", my_z.shape)
+                    if my_z.shape[1] == 3: 
+                        my_z = my_z.transpose(0,2,3,1) # (b,c,h,w) -> (b,h,w,c) 
+
+                    rows = 5
+                    offset = 0 # start idx for visualizing  
+                    fig, axes = plt.subplots(rows, 3, figsize=(4, 6))
+ 
+                    for i in range(rows):
+
+                        # Original input image 
+                        input_img = my_x[offset+i, 0].reshape(64,64,1)
+                        axes[i, 0].imshow(input_img, cmap='gray', interpolation='none')
+                        axes[i, 0].axis('off')
+                        if i == 0:
+                            axes[i, 0].set_title('Input')
+                        
+                        # Latent representation 
+                        latent_img = my_z[offset+i]
+                        axes[i, 1].imshow(latent_img)#, cmap='viridis')
+                        axes[i, 1].axis('off')
+                        if i == 0:
+                            axes[i, 1].set_title('Latent')
+                        
+                        # Reconstructed image
+                        reco_img = my_reco[offset+i, 0].reshape(64,64,1)
+                        axes[i, 2].imshow(reco_img, cmap='gray', interpolation='none')
+                        axes[i, 2].axis('off')
+                        if i == 0:
+                            axes[i, 2].set_title('Reco')
+
+                    # Adjust layout
+                    plt.tight_layout()
+                    plt.savefig("z_imgs.png")
+                    print("Saved latents as z_img.png")
+                    exit() 
             
             # Do not train if saving latents  
             exit()
@@ -875,7 +1015,8 @@ if __name__ == "__main__":
                 melk()
                 raise
         if not opt.no_test and not trainer.interrupted:
-            trainer.test(model, data)
+            print("Don't test me! (no test dataset)")
+            # trainer.test(model, data) # crashes since no test dataset 
     except Exception:
         if opt.debug and trainer.global_rank == 0:
             try:

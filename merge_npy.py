@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 # Define the directory containing the .npy files
-directory = 'protons64_ae_disc_post_test/'
+directory = 'protons64_sample/samples/'
 
 # Initialize an empty list to store the arrays
 combined_data = []
@@ -10,13 +10,16 @@ combined_data = []
 
 # Iterate through all files in the directory
 for filename in sorted(os.listdir(directory)):
-	if filename.endswith('.npy') and 'posterior_batch_' in filename:
+	if filename.endswith('.npy') and 'batch_' in filename:
 		# Load the .npy file
 		file_path = os.path.join(directory, filename)
-		data = np.load(file_path)
-		
-		# Append the data to the list
-		combined_data.append(data)
+		try: 
+			data = np.load(file_path)
+			
+			# Append the data to the list
+			combined_data.append(data)
+		except: 
+			continue 
 		
 
 # Combine all arrays into one

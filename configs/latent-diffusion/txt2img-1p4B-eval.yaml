@@ -44,6 +44,7 @@ model:
     first_stage_config:
       target: ldm.models.autoencoder.AutoencoderKL
       params:
+        ckpt_path: "pretrained/model_klf8.ckpt" ## ZEdit 
         embed_dim: 4
         monitor: val/rec_loss
         ddconfig:

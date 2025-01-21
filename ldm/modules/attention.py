@@ -171,9 +171,17 @@ class CrossAttention(nn.Module):
         h = self.heads
 
         q = self.to_q(x)
-        context = default(context, x)
+        context = default(context, x) # use x if context=None
         k = self.to_k(context)
         v = self.to_v(context)
+
+        # print(self.context_dim)
+        # print(context.shape)
+        # print(q.shape)
+        # print(k.shape)
+        # print(v.shape)
+        # print("---")
+        # exit()
 
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
 
@@ -190,6 +198,9 @@ class CrossAttention(nn.Module):
 
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
+
+        # exit() 
+
         return self.to_out(out)
 
 

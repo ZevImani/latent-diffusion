@@ -3,8 +3,8 @@ import torch.nn as nn
 from functools import partial
 import clip
 from einops import rearrange, repeat
-import kornia
-
+# import kornia
+import math 
 
 from ldm.modules.x_transformer import Encoder, TransformerWrapper  # TODO: can we directly rely on lucidrains code and simply add this as a reuirement? --> test
 
@@ -32,6 +32,45 @@ class ClassEmbedder(nn.Module):
         c = self.embedding(c)
         return c
 
+## Use embedding for momentum  
+class MomentumEmbedder(AbstractEncoder): 
+
+    def __init__(self, n_embed, device="cuda"):
+        super().__init__()
+        self.device = device
+        self.embedding_layer = nn.Linear(3, n_embed)
+
+    def forward(self, momentum): 
+        momentum.to(self.device)
+        emb = self.embedding_layer(momentum)
+        return emb
+
+    def encode(self, x): 
+        return self(x) 
+
+    ## Modified timestep embedding from latent-diffusion/ldm/modules/diffusionmodules/model.py
+    # def MomentumEmbedder(self, momentum):
+
+    #     assert len(momentum.shape) == 2 
+    #     assert momentum.shape[1] == 3
+
+    #     half_dim = self.embedding_dim // 2
+    #     emb = math.log(10000) / (half_dim - 1)
+    #     emb = torch.exp(torch.arange(half_dim, dtype=torch.float32) * -emb)
+    #     emb = emb.to(device=momentum.device)
+
+    #     ## Expand embedding for each element in the momentum
+    #     emb = momentum.float()[:, :, None] * emb[None, :]
+    #     emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=2)  
+
+    #     ## Flatten the embedding to have the final embedding_dim size
+    #     emb = emb.view(emb.shape[0], -1)
+
+    #     ## Zero pad
+    #     if self.embedding_dim % 2 == 1:
+    #         emb = torch.nn.functional.pad(emb, (0, 1))
+
+    #     return emb
 
 class TransformerEmbedder(AbstractEncoder):
     """Some transformer encoder layers"""
@@ -167,36 +206,66 @@ class FrozenCLIPTextEmbedder(nn.Module):
         return z
 
 
-class FrozenClipImageEmbedder(nn.Module):
-    """
-        Uses the CLIP image encoder.
-        """
-    def __init__(
-            self,
-            model,
-            jit=False,
-            device='cuda' if torch.cuda.is_available() else 'cpu',
-            antialias=False,
-        ):
-        super().__init__()
-        self.model, _ = clip.load(name=model, device=device, jit=jit)
+# class FrozenClipImageEmbedder(nn.Module):
+#     """
+#         Uses the CLIP image encoder.
+#         """
+#     def __init__(
+#             self,
+#             model,
+#             jit=False,
+#             device='cuda' if torch.cuda.is_available() else 'cpu',
+#             antialias=False,
+#         ):
+#         super().__init__()
+#         self.model, _ = clip.load(name=model, device=device, jit=jit)
 
-        self.antialias = antialias
+#         self.antialias = antialias
 
-        self.register_buffer('mean', torch.Tensor([0.48145466, 0.4578275, 0.40821073]), persistent=False)
-        self.register_buffer('std', torch.Tensor([0.26862954, 0.26130258, 0.27577711]), persistent=False)
+#         self.register_buffer('mean', torch.Tensor([0.48145466, 0.4578275, 0.40821073]), persistent=False)
+#         self.register_buffer('std', torch.Tensor([0.26862954, 0.26130258, 0.27577711]), persistent=False)
 
-    def preprocess(self, x):
-        # normalize to [0,1]
-        x = kornia.geometry.resize(x, (224, 224),
-                                   interpolation='bicubic',align_corners=True,
-                                   antialias=self.antialias)
-        x = (x + 1.) / 2.
-        # renormalize according to clip
-        x = kornia.enhance.normalize(x, self.mean, self.std)
-        return x
+#     def preprocess(self, x):
+#         # normalize to [0,1]
+#         x = kornia.geometry.resize(x, (224, 224),
+#                                    interpolation='bicubic',align_corners=True,
+#                                    antialias=self.antialias)
+#         x = (x + 1.) / 2.
+#         # renormalize according to clip
+#         x = kornia.enhance.normalize(x, self.mean, self.std)
+#         return x
 
-    def forward(self, x):
-        # x is assumed to be in range [-1,1]
-        return self.model.encode_image(self.preprocess(x))
+#     def forward(self, x):
+#         # x is assumed to be in range [-1,1]
+#         return self.model.encode_image(self.preprocess(x))
 
+if __name__ == "__main__": 
+    print("HERE")
+
+    mom = [389.9, -245.2, -32.53]
+    my_prompt = torch.tensor(mom, dtype=torch.float32) / 500 
+
+    embedder = MomentumEmbedder(n_embed=1028)
+    
+    my_emb = embedder.encode(my_prompt)
+    print(my_emb)
+
+
+    # BERT = BERTEmbedder(n_embed=1280,n_layer=32).to('cuda')
+    # my_text = "A basket of cherries" 
+    # my_emb = BERT.encode(my_text)
+    # # my_emb = BERT(encode(my_text)
+    # print(my_emb)
+    # print(my_emb.shape)
+    '''
+    tensor([[[ 1.0791,  0.2656,  1.3031,  ...,  2.3130,  0.4883, -1.3679],
+         [ 1.0665,  0.2449,  1.3080,  ...,  2.2920,  0.4944, -1.3601],
+         [ 1.1391,  0.2267,  1.3406,  ...,  2.2966,  0.4998, -1.2900],
+         ...,
+         [ 1.1099,  0.2887,  1.3186,  ...,  2.2979,  0.4738, -1.4082],
+         [ 1.0878,  0.2788,  1.3758,  ...,  2.2772,  0.4928, -1.3865],
+         [ 1.0666,  0.3105,  1.3726,  ...,  2.2346,  0.5152, -1.3982]]],
+       device='cuda:0', grad_fn=<SliceBackward0>)
+
+    torch.Size([1, 77, 1280])
+    '''

@@ -24,7 +24,10 @@ def log_txt_as_img(wh, xc, size=10):
         draw = ImageDraw.Draw(txt)
         font = ImageFont.truetype('data/DejaVuSans.ttf', size=size)
         nc = int(40 * (wh[0] / 256))
-        lines = "\n".join(xc[bi][start:start + nc] for start in range(0, len(xc[bi]), nc))
+        try: 
+            lines = "\n".join(xc[bi][start:start + nc] for start in range(0, len(xc[bi]), nc))
+        except TypeError: 
+            lines = str(xc[bi])
 
         try:
             draw.text((0, 0), lines, fill="black", font=font)

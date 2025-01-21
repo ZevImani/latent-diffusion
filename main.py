@@ -23,6 +23,13 @@ from ldm.util import instantiate_from_config
 import h5py
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import wandb
+import warnings
+
+## Hide warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
 
 def get_parser(**parser_kwargs):
     def str2bool(v):
@@ -154,6 +161,14 @@ def get_parser(**parser_kwargs):
         const=True,
         default=False,
         help="option to save 50,000 samples to logdir",
+    )
+    parser.add_argument(
+        "--log_wandb",
+        type=str2bool,
+        nargs="?",
+        const=True,
+        default=True,
+        help="log to Weights & Biases",
     )
     return parser
 
@@ -299,13 +314,13 @@ class SetupCallback(Callback):
             if "callbacks" in self.lightning_config:
                 if 'metrics_over_trainsteps_checkpoint' in self.lightning_config['callbacks']:
                     os.makedirs(os.path.join(self.ckptdir, 'trainstep_checkpoints'), exist_ok=True)
-            print("Project config")
-            print(OmegaConf.to_yaml(self.config))
+            # print("Project config")
+            # print(OmegaConf.to_yaml(self.config))
             OmegaConf.save(self.config,
                            os.path.join(self.cfgdir, "{}-project.yaml".format(self.now)))
 
-            print("Lightning config")
-            print(OmegaConf.to_yaml(self.lightning_config))
+            # print("Lightning config")
+            # print(OmegaConf.to_yaml(self.lightning_config))
             OmegaConf.save(OmegaConf.create({"lightning": self.lightning_config}),
                            os.path.join(self.cfgdir, "{}-lightning.yaml".format(self.now)))
 
@@ -580,6 +595,9 @@ if __name__ == "__main__":
     cfgdir = os.path.join(logdir, "configs")
     seed_everything(opt.seed)
 
+    if opt.log_wandb: 
+        wandb.init(project=opt.logdir, sync_tensorboard=True)
+
     try:
         # init and save configs
         configs = [OmegaConf.load(cfg) for cfg in opt.base]
@@ -662,7 +680,7 @@ if __name__ == "__main__":
         else:
             modelckpt_cfg =  OmegaConf.create()
         modelckpt_cfg = OmegaConf.merge(default_modelckpt_cfg, modelckpt_cfg)
-        print(f"Merged modelckpt-cfg: \n{modelckpt_cfg}")
+        # print(f"Merged modelckpt-cfg: \n{modelckpt_cfg}")
         if version.parse(pl.__version__) < version.parse('1.4.0'):
             trainer_kwargs["checkpoint_callback"] = instantiate_from_config(modelckpt_cfg)
 
@@ -777,7 +795,8 @@ if __name__ == "__main__":
                 print("Summoning checkpoint.")
                 ckpt_path = os.path.join(ckptdir, "last.ckpt")
                 trainer.save_checkpoint(ckpt_path)
-
+            if opt.log_wandb:
+                wandb.finish()
 
         def divein(*args, **kwargs):
             if trainer.global_rank == 0:
@@ -790,8 +809,36 @@ if __name__ == "__main__":
         signal.signal(signal.SIGUSR1, melk)
         signal.signal(signal.SIGUSR2, divein)         
 
-        # How many latents or samples to save
+        # Number of latents or samples to save
         max_imgs = 50000
+
+        # my_loader = data.val_dataloader()
+        # for i, my_batch in enumerate(my_loader): 
+        #     # print(my_batch)
+        #     if i > 2: 
+        #         break
+        #     # print("!IM HERE!")
+        #     # exit() 
+
+
+        # ## Plot grid of generated samples 
+        # num_imgs = 9 ## Must be a square number 
+        # grid_size = int(np.sqrt(num_imgs))
+        # fig, axes = plt.subplots(grid_size, grid_size, figsize=(8, 8))
+        # axes = axes.ravel() # Flatten axes array for easy iteration 
+
+        # # fig.suptitle("Cond: "+str(opt.prompt), fontsize=20)
+        # for i in range(grid_size*grid_size):
+        #     mom = np.round(np.array(my_batch['momentum'][i]),1)
+        #     axes[i].set_title(str(mom))
+        #     axes[i].imshow(my_batch['image'][i] , cmap='gray')
+        #     axes[i].axis('off')
+
+        # plt.tight_layout()
+        # plt.savefig("cond_samples/train.png")
+        # print("Saved: cond_samples/train.png")
+
+        # exit()
 
         if opt.sample:  
             model.eval()
@@ -817,11 +864,38 @@ if __name__ == "__main__":
                 
                 # my_sample = model.p_sample_loop(None, shape=my_shape, return_intermediates=False)
                 
-                ## Sample Latent 
-                my_z = model.sample(cond=None, shape=(my_bs,3,16,16))
+                my_loader = data.val_dataloader()
+                for my_batch in my_loader:
+                    break 
+
+                my_log = model.log_images(my_batch, return_z=True, plot_progressive_rows=False, plot_diffusion_rows=False) 
+                
+                # print(my_log['samples'].shape)
+                # print(my_log['z_samples'].shape)
+                # exit()
+                
+                my_z = my_log['z_samples']
+                my_sample = my_log['samples']
+
+                ## Sample Latent (DDPM)
+                # my_z = model.sample(cond=None, shape=(my_bs,3,16,16))
+                
+                ## Sample Latent (DDIM) -- use this one 
+                # my_z, inters = model.sample_log(cond=None, batch_size=my_bs, ddim=True, ddim_steps=200)
+                # sampler = model.DDIMSampler (model.self)
+                # my_z, inters = sampler.sample(200, my_bs, (3,16,16), cond=None, verbose=False)
+
+                # with model.ema_scope("Plotting"):
+                #     my_z, z_denoise_row = model.sample_log(cond=None,batch_size=my_bs,ddim=False,
+                #                                          ddim_steps=200,eta=1)
+                # samples, intermediates = model.sample_log() 
+
+                print("here:", my_z.shape)
+
+                # my_z = model.sample
 
                 ## Decode Latent 
-                my_sample = model.decode_first_stage(my_z)
+                # my_sample = model.decode_first_stage(my_z)
 
                 # my_sample = my_sample.transpose(0,3,1,2) #(b,c,h,w)
 
@@ -829,8 +903,17 @@ if __name__ == "__main__":
 
                 job_id = os.environ['SLURM_JOB_ID']
 
-                # np.save(sample_dir+"batch_"+str(my_idx), my_sample)
-                np.save(sample_dir+"batch_"+str(my_idx)+str(job_id), my_sample)
+                # np.save(sample_dir+"batch_"+str(my_idx)+str(job_id), my_sample)
+
+                ## Plot one generated latent and decoded 
+                this_z = my_z[0].detach().cpu() 
+                this_z = this_z.reshape(16, 16, 3)
+                this_sample = my_sample[0].detach().cpu() 
+                this_sample = this_sample.reshape(64, 64, 1)
+                fig, axes = plt.subplots(1, 2, figsize=(4, 3))
+                axes[0].imshow(this_z)
+                axes[1].imshow(this_sample, cmap='gray', interpolation='none')
+                plt.savefig('zgen.png')
 
                 print(my_z.shape)
                 print(int(time.time()-my_time))
@@ -857,8 +940,8 @@ if __name__ == "__main__":
             ## Make empty directory for latents 
             if os.path.exists(opt.save_latents):
                 if os.listdir(opt.save_latents):
-                    print("Error", opt.save_latents, "is not empty" )
-                    exit() 
+                    print("WARNING:", opt.save_latents, "is not empty" )
+                    # exit() 
             else: 
                 os.makedirs(opt.save_latents)
                 print("Saving latents to", opt.save_latents)
@@ -909,46 +992,67 @@ if __name__ == "__main__":
                 shape = (b, c, h, w)
                 '''
 
-                if my_idx == 2: 
-                    z_override = 0.5*z0 + 0.5*z1 
-                
+                # if my_idx == 2: 
+                #     z_override = 0.5*z0 + 0.5*z1 
+
+                ## HACK: Override inputs
+                # my_data = torch.tensor(np.load("cond_samples/batch_0.npy")) 
+                # my_mom = torch.tensor(np.load("hack_dists/hack_train_moms.npy")) 
+                # my_batch = {'image': my_data,
+                #             'momentum': my_mom}
+
                 my_out = model.get_input(my_batch, 'image', \
                     return_first_stage_outputs=True, z_override=z_override)
 
+                ## Autoencoder only (not works)
+                # my_batch = my_batch['image'].permute(0,3,1,2).to(model.device)
+                # my_out = model(my_batch)
+
+                # my_x = my_batch.clone().detach().cpu()
+                # my_r = my_out[0].detach().cpu()
+                # my_z = my_out[1].sample().detach().cpu()
+                # print("Input:", my_batch.shape)
+                # print("Latent:", my_z.shape)
+                # print("Reco:", my_r.shape)
+                # exit()
+
                 my_z = my_out[0].detach().cpu()
                 my_x = my_out[2].detach().cpu()
-                my_reco = my_out[3].detach().cpu()
-                
-                ## Hack to interpolate between latents
-                if my_idx == 0: 
-                    z0 = my_out[0].clone()
-                    x0 = my_out[2].clone() 
-                    print("Pass 0 stats")
-                    print("x:", torch.min(my_x.flatten()), torch.max(my_x.flatten()))
-                    print("z:", torch.min(my_z.flatten()), torch.max(my_z.flatten()))
-                    print("reco:", torch.min(my_reco.flatten()), torch.max(my_reco.flatten()))
-                    # x0 = my_out[2].clone() 
-                    continue 
-                    
-                if my_idx == 1: 
-                    z1 = my_out[0].clone() 
-                    x1 = my_out[2].clone()
-                    print("Pass 1 stats")
-                    print("x:", torch.min(my_x.flatten()), torch.max(my_x.flatten()))
-                    print("z:", torch.min(my_z.flatten()), torch.max(my_z.flatten()))
-                    print("reco:", torch.min(my_reco.flatten()), torch.max(my_reco.flatten()))
-                    # x1 = my_out[2].clone() 
-                    continue 
+                my_r = my_out[3].detach().cpu()
 
-                if my_idx == 2: 
-                    print("Interpolated stats")
-                    print("x:", torch.min(my_x.flatten()), torch.max(my_x.flatten()))
-                    print("z:", torch.min(my_z.flatten()), torch.max(my_z.flatten()))
-                    print("reco:", torch.min(my_reco.flatten()), torch.max(my_reco.flatten()))
-                    # exit()
-                    # pass 
-                    my_x = 0.5*x0 + 0.5*x1
-                    my_x = my_x.detach().cpu()
+                print("Input:", my_x.shape)
+                print("Latent:", my_z.shape)
+
+                ## Hack to interpolate between latents
+                # if my_idx == 0: 
+                #     z0 = my_out[0].clone()
+                #     x0 = my_out[2].clone() 
+                #     print("Pass 0 stats")
+                #     print("x:", torch.min(my_x.flatten()), torch.max(my_x.flatten()))
+                #     print("z:", torch.min(my_z.flatten()), torch.max(my_z.flatten()))
+                #     print("reco:", torch.min(my_r.flatten()), torch.max(my_r.flatten()))
+                #     # x0 = my_out[2].clone() 
+                #     continue 
+                    
+                # if my_idx == 1: 
+                #     z1 = my_out[0].clone() 
+                #     x1 = my_out[2].clone()
+                #     print("Pass 1 stats")
+                #     print("x:", torch.min(my_x.flatten()), torch.max(my_x.flatten()))
+                #     print("z:", torch.min(my_z.flatten()), torch.max(my_z.flatten()))
+                #     print("reco:", torch.min(my_r.flatten()), torch.max(my_r.flatten()))
+                #     # x1 = my_out[2].clone() 
+                #     continue 
+
+                # if my_idx == 2: 
+                #     print("Interpolated stats")
+                #     print("x:", torch.min(my_x.flatten()), torch.max(my_x.flatten()))
+                #     print("z:", torch.min(my_z.flatten()), torch.max(my_z.flatten()))
+                #     print("reco:", torch.min(my_r.flatten()), torch.max(my_r.flatten()))
+                #     # exit()
+                #     # pass 
+                #     my_x = 0.5*x0 + 0.5*x1
+                #     my_x = my_x.detach().cpu()
 
 
                 # Setup for Reparmeterization trick in Score Model 
@@ -957,22 +1061,27 @@ if __name__ == "__main__":
                 #     return_posterior=True) 
                 # posterior = encoder_posterior.parameters.cpu() 
 
-                # Save batch as npy file 
+                ## Save batch as npy file 
                 if not opt.plot_latents : 
-                    # np.save(opt.save_latents+"/latents_batch_"+str(my_idx), my_z)
-                    # np.save(opt.save_latents+"/inputs_batch_"+str(my_idx), my_x)
-                    # np.save(opt.save_latents+"/recos_batch_"+str(my_idx), my_reco)
-                    np.save(opt.save_latents+"/posterior_batch_"+str(my_idx), posterior)
+                    np.save(opt.save_latents+"/latents_batch_"+str(my_idx), my_z)
+                    np.save(opt.save_latents+"/inputs_batch_"+str(my_idx), my_x)
+                    np.save(opt.save_latents+"/recos_batch_"+str(my_idx), my_r)
+                    print("~~ Saved Latents:", opt.save_latents)
+                    exit() 
+                    # np.save(opt.save_latents+"/posterior_batch_"+str(my_idx), posterior)
+
+                ## HACK: override inputs pt. 2
+                # exit() 
 
                 # Plot x, z, reco
                 if opt.plot_latents : 
 
                     print("Z =", my_z.shape)
                     if my_z.shape[1] == 3: 
-                        my_z = my_z.transpose(0,2,3,1) # (b,c,h,w) -> (b,h,w,c) 
+                        my_z = my_z.permute(0,2,3,1) # (b,c,h,w) -> (b,h,w,c) 
 
                     rows = 5
-                    offset = 0 # start idx for visualizing  
+                    offset = 5 # start idx for visualizing  
                     fig, axes = plt.subplots(rows, 3, figsize=(4, 6))
  
                     for i in range(rows):
@@ -986,13 +1095,13 @@ if __name__ == "__main__":
                         
                         # Latent representation 
                         latent_img = my_z[offset+i]
-                        axes[i, 1].imshow(latent_img)#, cmap='viridis')
+                        axes[i, 1].imshow(latent_img)
                         axes[i, 1].axis('off')
                         if i == 0:
                             axes[i, 1].set_title('Latent')
                         
                         # Reconstructed image
-                        reco_img = my_reco[offset+i, 0].reshape(64,64,1)
+                        reco_img = my_r[offset+i, 0].reshape(64,64,1)
                         axes[i, 2].imshow(reco_img, cmap='gray', interpolation='none')
                         axes[i, 2].axis('off')
                         if i == 0:

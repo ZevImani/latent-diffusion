@@ -121,28 +121,35 @@ def run(model, logdir, batch_size=50, vanilla=False, custom_steps=None, eta=None
         all_latents = [] 
 
         print(f"Running unconditional sampling for {n_samples} samples")
-        for _ in trange(n_samples // batch_size, desc="Sampling Batches (unconditional)"):
+        for idx in trange(n_samples // batch_size, desc="Sampling Batches (unconditional)"):
+            
+
             logs = make_convolutional_sample(model, batch_size=batch_size,
                                              vanilla=vanilla, custom_steps=custom_steps,
                                              eta=eta)
-            n_saved = save_logs(logs, logdir, n_saved=n_saved, key="sample")
-            n_saved = save_logs(logs, logdir, n_saved=n_saved, key="latent")
-            all_images.extend([custom_to_np(logs["sample"])])
-            all_latents.extend([custom_to_np(logs["latent"])])
-            if n_saved >= n_samples:
-                print(f'Finish after generating {n_saved} samples')
-                break
-        all_img = np.concatenate(all_images, axis=0)
-        all_img = all_img[:n_samples]
-        shape_str = "x".join([str(x) for x in all_img.shape])
-        nppath = os.path.join(nplog, f"{shape_str}-samples.npz")
-        np.savez(nppath, all_img)
+            
+            npy_dir = opt.logdir + "/samples/"
+            np.save(npy_dir+"batch_"+str(idx)+".npy", logs['sample'].detach().cpu())
+            # np.save(npy_dir+"latent_batch_"+str(idx)+".npy", logs['latent'])
 
-        all_lat = np.concatenate(all_latents, axis=0)
-        all_lat = all_lat[:n_samples]
-        shape_str = "x".join([str(x) for x in all_lat.shape])
-        nppath = os.path.join(nplog, f"{shape_str}-latents.npz")
-        np.savez(nppath, all_lat)
+            # n_saved = save_logs(logs, logdir, n_saved=n_saved, key="sample")
+            # n_saved = save_logs(logs, logdir, n_saved=n_saved, key="latent")
+            # all_images.extend([custom_to_np(logs["sample"])])
+            # all_latents.extend([custom_to_np(logs["latent"])])
+            # if n_saved >= n_samples:
+            #     print(f'Finish after generating {n_saved} samples')
+            #     break
+        # all_img = np.concatenate(all_images, axis=0)
+        # all_img = all_img[:n_samples]
+        # shape_str = "x".join([str(x) for x in all_img.shape])
+        # nppath = os.path.join(nplog, f"{shape_str}-samples.npz")
+        # np.savez(nppath, all_img)
+
+        # all_lat = np.concatenate(all_latents, axis=0)
+        # all_lat = all_lat[:n_samples]
+        # shape_str = "x".join([str(x) for x in all_lat.shape])
+        # nppath = os.path.join(nplog, f"{shape_str}-latents.npz")
+        # np.savez(nppath, all_lat)
 
     else:
        raise NotImplementedError('Currently only sampling for unconditional models supported.')
@@ -276,9 +283,9 @@ if __name__ == "__main__":
         logdir = opt.resume.rstrip("/")
         ckpt = os.path.join(logdir, "model.ckpt")
 
-    base_configs = sorted(glob.glob(os.path.join(logdir, "config.yaml")))
-    # print("Z:", base_configs)
-    # exit()
+    ## HACK to find config (remove trailing checkpoints from logdir) : https://github.com/CompVis/latent-diffusion/issues/326
+    base_configs = sorted(glob.glob(os.path.join(logdir[:-11], "configs/*-project.yaml")))
+    # base_configs = sorted(glob.glob(os.path.join(logdir, "config.yaml")))
     opt.base = base_configs
 
     configs = [OmegaConf.load(cfg) for cfg in opt.base]
@@ -294,7 +301,7 @@ if __name__ == "__main__":
         print(f"Switching logdir from '{logdir}' to '{os.path.join(opt.logdir, locallog)}'")
         logdir = os.path.join(opt.logdir, locallog)
 
-    print(config)
+    # print(config)
 
     model, global_step = load_model(config, ckpt, gpu, eval_mode)
     print(f"global step: {global_step}")

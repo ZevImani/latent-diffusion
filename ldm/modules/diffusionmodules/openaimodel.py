@@ -80,8 +80,10 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     def forward(self, x, emb, context=None):
         for layer in self:
             if isinstance(layer, TimestepBlock):
+                # print("TimestepBlock")
                 x = layer(x, emb)
             elif isinstance(layer, SpatialTransformer):
+                # print("SpatialTransformer")
                 x = layer(x, context)
             else:
                 x = layer(x)
@@ -316,6 +318,7 @@ class AttentionBlock(nn.Module):
         #return pt_checkpoint(self._forward, x)  # pytorch
 
     def _forward(self, x):
+        # print("Here: openain.py attention")
         b, c, *spatial = x.shape
         x = x.reshape(b, c, -1)
         qkv = self.qkv(self.norm(x))
@@ -524,6 +527,8 @@ class UNetModel(nn.Module):
         input_block_chans = [model_channels]
         ch = model_channels
         ds = 1
+        # print("use:", use_spatial_transformer)
+        # exit()
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
@@ -716,6 +721,10 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
+        # print("=== OpenAI Model ===")
+        # print(timesteps)
+        # print(context)
+        # exit()
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
@@ -729,8 +738,10 @@ class UNetModel(nn.Module):
 
         h = x.type(self.dtype)
         for module in self.input_blocks:
+            # print(module)
             h = module(h, emb, context)
             hs.append(h)
+        # exit()
         h = self.middle_block(h, emb, context)
         for module in self.output_blocks:
             h = th.cat([h, hs.pop()], dim=1)

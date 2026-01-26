@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -c 1                	# Number of cores (-c)
-#SBATCH -t 0-48:00      	    # Runtime in D-HH:MM, minimum of 10 minutes
+#SBATCH -t 0-20:00      	    # Runtime in D-HH:MM, minimum of 10 minutes
 #SBATCH -p iaifi_gpu					# Partition to submit to
 #SBATCH --mem=24G          	# Memory pool for all cores (see also --mem-per-cpu)
-#SBATCH -o zldm_edep_v1_%j.out  	 	# File to which STDOUT will be written, %j inserts jobid
-#SBATCH -e zldm_edep_v1_%j.err  	 	# File to which STDERR will be written, %j inserts jobid
+#SBATCH -o zldm_edep_v2_%j.out  	 	# File to which STDOUT will be written, %j inserts jobid
+#SBATCH -e zldm_edep_v2_%j.err  	 	# File to which STDERR will be written, %j inserts jobid
 #SBATCH --gres=gpu:1	 		# Request GPUs (number and/or type)
 #SBATCH --signal=SIGTERM@120	# Terminate program @x seconds before time limit 
 
@@ -20,7 +20,7 @@
 ## Train Conditional LDM 
 conda run -n ldm python3 -u main.py \
 	--base configs/latent-diffusion/protons64-ldm-kl.yaml \
-	--logdir edep_protons64_ldm \
+	--logdir edep_protons64_v2_ldm \
 	--scale_lr False \
 	--log_wandb True \
 	--train \

@@ -37,7 +37,7 @@ Generate events using `submit_sample.sh`. Specify the momentum prompt using the 
 ## Adding a dataset 
 Create a new dataloader. Currently using `ldm\data\protons64.py`. Update the autoencoder and diffusion config files to point to the data files. 
 
-## Analysis Scrips 
+## Analysis Scripts 
 This will be in a seperate repo (coming soon). 
 
 

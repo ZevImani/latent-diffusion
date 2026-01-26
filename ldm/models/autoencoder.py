@@ -320,7 +320,6 @@ class AutoencoderKL(pl.LightningModule):
                     print("Deleting key {} from state_dict.".format(k))
                     del sd[k]
         self.load_state_dict(sd, strict=False)
-        print(f"Restored from {path}")
 
     def encode(self, x):
         h = self.encoder(x)

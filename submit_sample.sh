@@ -3,29 +3,34 @@
 #SBATCH -t 0-01:00      	    # Runtime in D-HH:MM, minimum of 10 minutes
 #SBATCH -p iaifi_gpu					# Partition to submit to
 #SBATCH --mem=16000          	# Memory pool for all cores (see also --mem-per-cpu)
-#SBATCH -o zsample_bad_reco_%j.out  	 	# File to which STDOUT will be written, %j inserts jobid
-#SBATCH -e zsample_bad_reco_%j.err  	 	# File to which STDERR will be written, %j inserts jobid
+#SBATCH -o zsamp_ldm_sample3_%j.out  	 	# File to which STDOUT will be written, %j inserts jobid
+#SBATCH -e zsamp_ldm_sample3_%j.err  	 	# File to which STDERR will be written, %j inserts jobid
 #SBATCH --gres=gpu:1	 	# Request GPUs (number and/or type)
 #SBATCH --signal=SIGTERM@120	# Terminate program @x seconds before time limit 
 
 export CUDA_VISIBLE_DEVICES=0
 
-checkpoint_path="/model_weights/ldm/epoch=000040.ckpt"
+# checkpoint_path="/edep_protons64/epoch=000040.ckpt"
+# checkpoint_path="edep_protons64_ldm/runs/checkpoints/epoch=000040.ckpt"
+
+checkpoint_path="edep_protons64_v2_ldm/runs/checkpoints/epoch=000075.ckpt"
+
+	# --outdir one_mom_sample/ldm_epoch40_sample1 \
 
 ## Conditional Sampling 
 # python3 scripts/txt2img.py \
-conda run -n ldm python3 scripts/txt2img.py \
+conda run -n ldm python3 gen_cLDM.py \
 	--base configs/latent-diffusion/protons64-ldm-kl.yaml \
-	--outdir one_mom_sample/sample1 \
-	--px "314.0" \
-	--py "-126.4" \
-	--pz "249.1" \
+	--outdir ldm_protons_sample4/ \
+	--px "-391.4" \
+	--py "-99.7" \
+	--pz "-217.9" \
 	--ddim_steps 200 \
 	--ddim_eta 0.0 \
 	--W 64 \
 	--H 64 \
 	--n_samples 128 \
-	--n_iter 1 \
+	--n_iters 100 \
 	--scale 5.0 \
 	--resume "$checkpoint_path"	
 

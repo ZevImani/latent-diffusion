@@ -52,7 +52,7 @@ model:
         embed_dim: 3
         monitor: "val/rec_loss"
         # ckpt_path: "protons64v2_div10_16x16x3/runs/checkpoints/epoch=000147.ckpt" 
-        ckpt_path: "edep_protons64_ae16x16x3/runs/checkpoints/epoch=000120.ckpt" 
+        ckpt_path: "/n/home11/zimani/latent-diffusion/edep_protons64_ae16x16x3/runs/checkpoints/epoch=000120.ckpt" 
         ddconfig:
           double_z: True
           z_channels: 3

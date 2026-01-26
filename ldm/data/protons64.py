@@ -109,12 +109,22 @@ class protons64xValidation(protons):
 						num_batches=21, events_per_batch=128, **kwargs)
 
 
+# class edepProtons64Train(protons):
+# 	def __init__(self, **kwargs):
+# 		super().__init__(data_root="/n/holystore01/LABS/iaifi_lab/Users/zimani/datasets/edep_protons64/edep_train", 
+# 						 num_batches=2000, events_per_batch=128, **kwargs)
+
+# class edepProtons64Validation(protons):
+# 	def __init__(self, **kwargs):
+# 		super().__init__(data_root="/n/holystore01/LABS/iaifi_lab/Users/zimani/datasets/edep_protons64/edep_val",
+# 						 num_batches=200, events_per_batch=128, **kwargs)
+
 class edepProtons64Train(protons):
 	def __init__(self, **kwargs):
-		super().__init__(data_root="/n/holystore01/LABS/iaifi_lab/Users/zimani/datasets/edep_protons64/edep_train", 
+		super().__init__(data_root="/n/holystore01/LABS/iaifi_lab/Users/zimani/datasets/edep_protons64_v2/edep_train", 
 						 num_batches=2000, events_per_batch=128, **kwargs)
 
 class edepProtons64Validation(protons):
 	def __init__(self, **kwargs):
-		super().__init__(data_root="/n/holystore01/LABS/iaifi_lab/Users/zimani/datasets/edep_protons64/edep_val",
+		super().__init__(data_root="/n/holystore01/LABS/iaifi_lab/Users/zimani/datasets/edep_protons64_v2/edep_val",
 						 num_batches=200, events_per_batch=128, **kwargs)

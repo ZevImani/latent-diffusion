@@ -88,10 +88,7 @@ def generate_conditioned_samples(
 	else:
 		sampler = DDIMSampler(model)
 
-	# Create output directory
-	os.makedirs(outdir, exist_ok=True)
-
-	# Construct and normalize momentum vector 
+	# Construct and normalize momentum vector
 	if isinstance(px, list):
 		assert len(px) == len(pz) == len(pz)
 		n_samples = len(px)
@@ -145,6 +142,7 @@ def generate_conditioned_samples(
 
 				# Save individual batches if multiple iterations
 				if n_iters > 1:
+					os.makedirs(outdir, exist_ok=True)
 					np.save(os.path.join(outdir, f"batch_{n}.npy"), x_samples_ddim.numpy())
 
 	# Combine all samples

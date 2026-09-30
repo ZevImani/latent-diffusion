@@ -1,30 +1,36 @@
 name: ldm
 channels:
   - pytorch
+  - conda-forge
   - defaults
 dependencies:
-  - python=3.8.5
-  - pip=20.3
-  - cudatoolkit=11.0
-  - pytorch=1.7.0
-  - torchvision=0.8.1
-  - numpy=1.20.3 ## Updated from 1.19.2
-  - matplotlib ## plotting  
-  - h5py ## particle data 
+  - python=3.8.12
+  - pip=20.3.3
+  - cudatoolkit=11.0.221
+  - torchvision=0.8.1 ## pytorch channel (cu110 build); pulls conda pytorch 1.7, which the pip torch below replaces
+  - h5py=3.7.0 ## particle data
+  - pillow=10.4.0
+  - pot=0.8.2 ## POT, conda-forge; used by some inference_loop scripts
   - pip:
+    - torch==2.4.1 ## PyPI wheel (bundles CUDA 12.1); needs >=1.10 for the inference loop
+    - numpy==1.24.4
+    - scipy==1.9.3
+    - matplotlib==3.7.5 ## plotting
     - albumentations==0.4.3
     - opencv-python==4.1.2.30
     - pudb==2019.2
     - imageio==2.9.0
     - imageio-ffmpeg==0.4.2
-    - pytorch-lightning==1.5 ## Updated from 1.4.2
+    - pytorch-lightning==1.5.0
     - omegaconf==2.1.1
-    - test-tube>=0.7.5
-    - streamlit>=0.73.1
+    - test-tube==0.7.5
+    - streamlit==1.40.1
     - einops==0.3.0
     - torch-fidelity==0.3.0
     - transformers==4.3.1
-    - scikit-learn=1.7.1 ## Added for analysis scripts 
-    - -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
-    - -e git+https://github.com/openai/CLIP.git@main#egg=clip
+    - scikit-learn==1.3.2 ## analysis scripts
+    - geomloss==0.2.6 ## Sinkhorn/EMD losses for the inference loop
+    - tqdm==4.67.1
+    - -e git+https://github.com/CompVis/taming-transformers.git@3ba01b241669f5ade541ce990f7650a3b8f65318#egg=taming-transformers
+    - -e git+https://github.com/openai/CLIP.git@dcba3cb2e2827b402d2701e7e1c7d9fed8a20ef1#egg=clip
     - -e .

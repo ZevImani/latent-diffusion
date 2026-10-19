@@ -136,11 +136,17 @@ class CheckpointFunction(torch.autograd.Function):
             # Tensors.
             shallow_copies = [x.view_as(x) for x in ctx.input_tensors]
             output_tensors = ctx.run_function(*shallow_copies)
-        input_grads = torch.autograd.grad(
+        # Only differentiate w.r.t. params that require grad (frozen params, e.g. a
+        # model frozen for inference, would make autograd.grad raise); frozen ones get None.
+        grad_params = [p for p in ctx.input_params if p.requires_grad]
+        grads = iter(torch.autograd.grad(
             output_tensors,
-            ctx.input_tensors + ctx.input_params,
+            ctx.input_tensors + grad_params,
             output_grads,
             allow_unused=True,
+        ))
+        input_grads = tuple(next(grads) for _ in ctx.input_tensors) + tuple(
+            next(grads) if p.requires_grad else None for p in ctx.input_params
         )
         del ctx.input_tensors
         del ctx.input_params

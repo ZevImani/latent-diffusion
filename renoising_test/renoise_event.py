@@ -27,7 +27,7 @@ from ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG = os.path.join(SCRIPT_DIR, "../configs/latent-diffusion/protons64-ldm-kl.yaml")
-DEFAULT_CKPT = "/n/home11/zimani/latent-diffusion/edep_protons64_v2_ldm/runs/checkpoints/last.ckpt"
+DEFAULT_CKPT = "/n/holystore01/LABS/iaifi_lab/Users/zimani/ldm_ckpts/edep_protons64_v2_ldm/epoch=000075.ckpt"
 DEFAULT_KINKED  = "/n/home11/zimani/inference_loop/datasets/kinked_tracks/kinked_tracks_top64.npz"
 INFERENCE_DIR   = os.path.dirname(os.path.dirname(SCRIPT_DIR))  # .../inference_loop
 

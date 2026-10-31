@@ -13,13 +13,13 @@ export CUDA_VISIBLE_DEVICES=0
 # checkpoint_path="/edep_protons64/epoch=000040.ckpt"
 # checkpoint_path="edep_protons64_ldm/runs/checkpoints/epoch=000040.ckpt"
 
-checkpoint_path="edep_protons64_v2_ldm/runs/checkpoints/epoch=000075.ckpt"
+checkpoint_path="/n/holystore01/LABS/iaifi_lab/Users/zimani/ldm_ckpts/edep_protons64_v2_ldm/epoch=000075.ckpt"
 
 	# --outdir one_mom_sample/ldm_epoch40_sample1 \
 
 ## Conditional Sampling 
 # python3 scripts/txt2img.py \
-conda run -n ldm python3 gen_cLDM.py \
+conda run -n ldm python3 run_condLDM.py \
 	--base configs/latent-diffusion/protons64-ldm-kl.yaml \
 	--outdir ldm_protons_sample4/ \
 	--px "-391.4" \

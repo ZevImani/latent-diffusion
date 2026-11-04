@@ -170,12 +170,6 @@ class CrossAttention(nn.Module):
     def forward(self, x, context=None, mask=None):
         h = self.heads
 
-        # use_prompt = True   
-        # if context == None: 
-        #     use_prompt = False 
-
-        
-
         q = self.to_q(x)
         context = default(context, x) # use x if context=None
         k = self.to_k(context)
@@ -197,34 +191,6 @@ class CrossAttention(nn.Module):
 
         out = einsum('b i j, b j d -> b i d', attn, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
-
-        # if use_prompt: 
-        #     print("\nATTENTION\n")
-        #     print(context.shape)
-        #     print(q.shape)
-        #     print(k.shape)
-        #     print(v.shape)
-        #     print(attn.shape)
-        #     print(out.shape)
-        #     print(self.to_out(out).shape)
-        #     exit() 
-            # import numpy as np 
-            # my_dict = {
-            #         "context": context.detach().cpu().numpy(),
-            #         "q": q.detach().cpu().numpy(),
-            #         "k": k.detach().cpu().numpy(),
-            #         "v": v.detach().cpu().numpy(),
-            #         "attn": attn.detach().cpu().numpy(),
-            #         "out": out.detach().cpu().numpy(),
-            #         "to_out": self.to_out(out).detach().cpu().numpy()
-            #     }
-
-            # np.save("prompt1_dict.npy", my_dict)
-            # print("Saved attention dict")
-            # exit() 
-
-        # exit() 
-
         return self.to_out(out)
 
 

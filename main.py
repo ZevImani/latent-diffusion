@@ -342,13 +342,16 @@ class SetupCallback(Callback):
 class ImageLogger(Callback):
     def __init__(self, batch_frequency, max_images, clamp=True, increase_log_steps=True,
                  rescale=True, disabled=False, log_on_batch_idx=False, log_first_step=False,
-                 log_images_kwargs=None):
+                 log_images_kwargs=None, zero_to_max=False):
         super().__init__()
+        ## Display each image on [0, its max] instead of clamping to [-1, 1] (for images in physical units, e.g. MeV)
+        self.zero_to_max = zero_to_max
         self.rescale = rescale
         self.batch_freq = batch_frequency
         self.max_images = max_images
         self.logger_log_images = {
             pl.loggers.TestTubeLogger: self._testtube,
+            pl.loggers.WandbLogger: self._wandb,
         }
         self.log_steps = [2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
         if not increase_log_steps:
@@ -360,15 +363,25 @@ class ImageLogger(Callback):
         self.log_first_step = log_first_step
 
     @rank_zero_only
-    def _testtube(self, pl_module, images, batch_idx, split):
+    def _testtube(self, logger, pl_module, images, batch_idx, split):
         for k in images:
             grid = torchvision.utils.make_grid(images[k])
             grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
 
             tag = f"{split}/{k}"
-            pl_module.logger.experiment.add_image(
+            logger.experiment.add_image(
                 tag, grid,
                 global_step=pl_module.global_step)
+
+    @rank_zero_only
+    def _wandb(self, logger, pl_module, images, batch_idx, split):
+        grids = {}
+        for k in images:
+            grid = torchvision.utils.make_grid(images[k])
+            grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
+            grids[f"{split}/{k}"] = wandb.Image(grid)
+        logger.experiment.log({**grids, "trainer/global_step": pl_module.global_step,
+                               "epoch": pl_module.current_epoch})
 
     @rank_zero_only
     def log_local(self, save_dir, split, images,
@@ -396,7 +409,10 @@ class ImageLogger(Callback):
                 hasattr(pl_module, "log_images") and
                 callable(pl_module.log_images) and
                 self.max_images > 0):
-            logger = type(pl_module.logger)
+            ## pl_module.logger is a LoggerCollection when both testtube and wandb are used
+            loggers = list(pl_module.logger) if isinstance(pl_module.logger, pl.loggers.LoggerCollection) \
+                else [pl_module.logger]
+            save_dir = next(lg.save_dir for lg in loggers if lg.save_dir is not None)
 
             is_train = pl_module.training
             if is_train:
@@ -410,17 +426,29 @@ class ImageLogger(Callback):
                 images[k] = images[k][:N]
                 if isinstance(images[k], torch.Tensor):
                     images[k] = images[k].detach().cpu()
-                    if self.clamp:
+                    if self.zero_to_max:
+                        images[k] = self._zero_to_max(images[k])
+                    elif self.clamp:
                         images[k] = torch.clamp(images[k], -1., 1.)
 
-            self.log_local(pl_module.logger.save_dir, split, images,
+            self.log_local(save_dir, split, images,
                            pl_module.global_step, pl_module.current_epoch, batch_idx)
 
-            logger_log_images = self.logger_log_images.get(logger, lambda *args, **kwargs: None)
-            logger_log_images(pl_module, images, pl_module.global_step, split)
+            for lg in loggers:
+                logger_log_images = self.logger_log_images.get(type(lg), lambda *args, **kwargs: None)
+                logger_log_images(lg, pl_module, images, pl_module.global_step, split)
 
             if is_train:
                 pl_module.train()
+
+    @staticmethod
+    def _zero_to_max(x):
+        ## Map [0, max] -> [-1, 1], so the (x + 1) / 2 display rescale gives 0 -> black, max -> white.
+        ## Max is per image for batches (N, C, H, W), per grid for pre-made grids (C, H, W) like diffusion_row.
+        x = x.clamp(min=0.)
+        dims = tuple(range(1, x.dim())) if x.dim() == 4 else tuple(range(x.dim()))
+        vmax = x.amax(dim=dims, keepdim=True).clamp(min=1e-8)
+        return 2. * x / vmax - 1.
 
     def check_frequency(self, check_idx):
         if ((check_idx % self.batch_freq) == 0 or (check_idx in self.log_steps)) and (
@@ -600,7 +628,9 @@ if __name__ == "__main__":
 
     if opt.log_wandb: 
         print_config = True 
-        wandb.init(project=opt.logdir, sync_tensorboard=True)
+        ## No sync_tensorboard: it splits every tensorboard tag into its own wandb row, so "epoch"
+        ## never shares a row with the losses. Metrics go through WandbLogger instead (see below).
+        wandb.init(project=opt.logdir, name=nowname)
 
     try:
         # init and save configs
@@ -662,6 +692,11 @@ if __name__ == "__main__":
             logger_cfg = OmegaConf.create()
         logger_cfg = OmegaConf.merge(default_logger_cfg, logger_cfg)
         trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
+        if opt.log_wandb:
+            ## Also log straight to wandb (reuses the run from wandb.init). Lightning adds "epoch" and
+            ## "trainer/global_step" to every logged row, so any metric can be plotted against epoch.
+            trainer_kwargs["logger"] = [trainer_kwargs["logger"],
+                                        instantiate_from_config(default_logger_cfgs["wandb"])]
 
         # modelcheckpoint - use TrainResult/EvalResult(checkpoint_on=metric) to
         # specify which metric is used to determine best models

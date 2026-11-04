@@ -1,0 +1,107 @@
+model:
+  base_learning_rate: 1.0e-4   ## protons: 5e-5 at bs 128 -> sqrt(4) x for bs 512 (run with --scale_lr False)
+  target: ldm.models.diffusion.ddpm.LatentDiffusion
+  params:
+    linear_start: 0.0015
+    linear_end: 0.0155
+    num_timesteps_cond: 1
+    log_every_t: 300               ## Logging: frequency for progressive denoising
+    timesteps: 1000
+    loss_type: l2                 ## default is l2
+    first_stage_key: "image"
+    cond_stage_key: "momentum"     ## Condition on momentum
+    image_size: 16                 ## latent size
+    channels: 3                    ## latent channels
+    cond_stage_trainable: True
+    conditioning_key: crossattn
+    concat_mode: False
+    scale_by_std: True             ## scale_factor = 1/std(z) from the first train batch (512 events)
+    monitor: 'val/loss_simple_ema'
+
+    scheduler_config:
+      target: ldm.lr_scheduler.LambdaLinearScheduler
+      params:
+        warm_up_steps: [1000]      ## 2 epochs at bs 512; longer than protons (100) since lr is 2x higher
+        cycle_lengths: [10000000000000]
+        f_start: [1.e-6]
+        f_max: [1.]
+        f_min: [ 1.]
+
+    unet_config:                   ## same UNet as protons64-ldm-kl.yaml
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
+      params:
+        image_size: 16
+        in_channels: 3
+        out_channels: 3
+        model_channels: 96
+        attention_resolutions: [ 1, 2, 4, 8]   # 16, 8, 4, 2
+        num_res_blocks: 2
+        channel_mult: [ 1,2,2,4,4]  # 16, 8, 4, 2, 1
+        num_heads: 4
+        use_spatial_transformer: True ## Use cross attention
+        transformer_depth: 1
+        context_dim: 16               ## = cond_stage n_embed
+        legacy: False
+
+    first_stage_config:            ## must match configs/autoencoder/autoencoder_kl_electrons64_16x16x3.yaml
+      target: ldm.models.autoencoder.AutoencoderKL
+      params:
+        embed_dim: 3
+        monitor: "val/rec_loss"
+        ckpt_path: "/n/holystore01/LABS/iaifi_lab/Users/zimani/ldm_ckpts/electrons64_ae16x16x3/checkpoints/epoch=000145.ckpt"
+        output_threshold: 0.005    ## decoded pixels < 0.005 MeV (incl. negatives) -> 0, same as the data's pixel cut
+        ddconfig:
+          double_z: True
+          z_channels: 3
+          resolution: 64
+          in_channels: 1
+          out_ch: 1
+          ch: 128
+          ch_mult: [1,2,4]  # num_down = len(ch_mult)-1
+          num_res_blocks: 2
+          attn_resolutions: [ ]
+          dropout: 0.0
+        lossconfig:
+          target: torch.nn.Identity
+
+    cond_stage_config:
+      target: ldm.modules.encoders.modules.MomentumEmbedder
+      params:
+        prompt_dim: 3              ## px, py, pz (scaled by 1/100 in electrons64Train -> [-1, 1])
+        n_embed: 16                ## each component -> shared Linear(1, 16) + fixed sinusoidal positional encoding of its
+                                   ## index, so cross-attention can tell px/py/pz apart (attention ignores token order)
+
+## Input = 64x64x1 electron images (MeV), latent = 16x16x3
+## Conditioned on initial 3-momentum (cross-attention over 3 tokens)
+
+data:
+  target: main.DataModuleFromConfig
+  params:
+    batch_size: 512                ## step is compute-bound: ~same img/s as bs 128-256, but fewer/less noisy updates
+    num_workers: 2                 ## in-memory data: 1 worker ~40k img/s vs ~1.2k img/s the GPU consumes; 2 for slack
+    wrap: False
+    train:
+      target: ldm.data.protons64.electrons64Train
+      params:
+        in_memory: True            ## 3.9 GiB, ~25 s to load; avoids reading a 2 MB file per event
+    validation:
+      target: ldm.data.protons64.electrons64Validation
+      params:
+        in_memory: True
+
+
+lightning:
+  callbacks:
+    image_logger:
+      target: main.ImageLogger
+      params:
+        batch_frequency: 2500      ## every 5 epochs (500 steps/epoch at bs 512)
+        max_images: 8
+        increase_log_steps: False
+        zero_to_max: True          ## each image shown on [0, its max] MeV (default clamps to [-1, 1])
+
+  trainer:
+    benchmark: True                ## fixed input shapes -> let cuDNN pick the fastest conv kernels
+    precision: 32                  ## AE encoder runs inside the step; bf16/fp16 shift/overflow the MeV-scale encodings (see AE config)
+    max_epochs: 150                ## 500 steps/epoch -> 75k steps
+    val_check_interval: 1.0        ## once per epoch (50 val batches)

@@ -293,12 +293,19 @@ class AutoencoderKL(pl.LightningModule):
                  image_key="image",
                  colorize_nlabels=None,
                  monitor=None,
+                 reuse_rec_for_disc=False,
+                 output_threshold=None,
                  ):
         super().__init__()
         self.image_key = image_key
         self.encoder = Encoder(**ddconfig)
         self.decoder = Decoder(**ddconfig)
         self.loss = instantiate_from_config(lossconfig)
+        ## Disc step uses the (detached) reconstructions from the AE step instead of a 2nd encoder/decoder pass
+        self.reuse_rec_for_disc = reuse_rec_for_disc
+        self._cached_rec = None
+        ## Zero decoded pixels below this value (e.g. electrons: 0.005 MeV, the data's pixel cut), removing tiny/negative noise
+        self.output_threshold = output_threshold
         assert ddconfig["double_z"]
         self.quant_conv = torch.nn.Conv2d(2*ddconfig["z_channels"], 2*embed_dim, 1)
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
@@ -330,6 +337,10 @@ class AutoencoderKL(pl.LightningModule):
     def decode(self, z):
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
+        ## Every decode goes through here (LDM decode_first_stage, logging, inference scripts). Skipped in train mode
+        ## so it never zeroes AE training gradients; a frozen LDM first stage is always in eval mode.
+        if self.output_threshold is not None and not self.training:
+            dec = torch.where(dec < self.output_threshold, torch.zeros_like(dec), dec)
         return dec
 
     def forward(self, input, sample_posterior=True):
@@ -350,7 +361,13 @@ class AutoencoderKL(pl.LightningModule):
 
     def training_step(self, batch, batch_idx, optimizer_idx):
         inputs = self.get_input(batch, self.image_key)
-        reconstructions, posterior = self(inputs)
+        if self.reuse_rec_for_disc and optimizer_idx == 1 and self._cached_rec is not None:
+            reconstructions, posterior = self._cached_rec, None
+            self._cached_rec = None
+        else:
+            reconstructions, posterior = self(inputs)
+            if self.reuse_rec_for_disc and optimizer_idx == 0:
+                self._cached_rec = reconstructions.detach()
 
         if optimizer_idx == 0:
             # train encoder+decoder+logvar

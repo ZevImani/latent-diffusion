@@ -13,7 +13,7 @@ export CUDA_VISIBLE_DEVICES=0
 # checkpoint_path="/edep_protons64/epoch=000040.ckpt"
 # checkpoint_path="edep_protons64_ldm/runs/checkpoints/epoch=000040.ckpt"
 
-checkpoint_path="/n/holystore01/LABS/iaifi_lab/Users/zimani/ldm_ckpts/edep_protons64_v2_ldm/epoch=000075.ckpt"
+checkpoint_path="/n/holystore01/LABS/iaifi_lab/Users/zimani/ldm_ckpts/protons64_cLDM/epoch=000075.ckpt"
 
 	# --outdir one_mom_sample/ldm_epoch40_sample1 \
 

@@ -19,29 +19,38 @@ conda activate ldm
 
 There are three parts to running the model: autoencoder, diffusion, and sampling. I use shell scripts to run each of these either on an interactive node using `./submit_ldm.sh` or submit as a job `sbatch submit_ldm.sh`. 
 
-### 1. Autoencoder 
-Modify the config file `configs/autoencoder/autoencoder_kl_protons64_16x16x3.yaml`.
+Each dataset has its own configs and submit scripts:
 
-Train the autoencoder using `submit_ae.sh`
+| Dataset | Autoencoder config / script | LDM config / script |
+| --- | --- | --- |
+| protons64 | `configs/autoencoder/autoencoder_kl_protons64_16x16x3.yaml` / `submit_ae.sh` | `configs/latent-diffusion/protons64-ldm-kl.yaml` / `submit_ldm.sh` |
+| electrons64 | `configs/autoencoder/autoencoder_kl_electrons64_16x16x3.yaml` / `submit_ae_electrons.sh` | `configs/latent-diffusion/electrons64-ldm-kl.yaml` / `submit_ldm_electrons.sh` |
+
+### 1. Autoencoder 
+Modify the autoencoder config for your dataset (see table above).
+
+Train the autoencoder using its submit script.
 
 Use Weights and Biases logging to determine the best checkpoint.  
 
 Logs and checkpoints are saved to `<logdir>/<START_DATE_AND_TIME>_<config_name>/`, which contains `checkpoints/` (including `last.ckpt`) and `configs/` (the merged config used for the run). To resume, pass `--resume` either the run directory (loads `checkpoints/last.ckpt`) or a specific `.ckpt` file inside `<run>/checkpoints/`. The saved run configs are loaded automatically. `--resume` cannot be combined with `--name`.
 
 ### 2. Diffusion Model
-Modify the config file: `configs/latent-diffusion/protons64-ldm-kl.yaml` to specify the desired autoencoder checkpoint.  
+Modify the LDM config for your dataset (see table above) to specify the desired autoencoder checkpoint (`ckpt_path` under `first_stage_config`).  
 
-Train the latent diffusion model using `submit_ldm.sh`
+Train the latent diffusion model using its submit script.
 
-### Trained edep checkpoints
-The checkpoints used for the edep protons64 results are kept on lab storage, not in the run directories:
+### Trained checkpoints
+The trained checkpoints are kept on lab storage under `/n/holystore01/LABS/iaifi_lab/Users/zimani/ldm_ckpts/`, not in the run directories:
 
-| Model | Checkpoint |
-| --- | --- |
-| Autoencoder (16x16x3) | `/n/holystore01/LABS/iaifi_lab/Users/zimani/ldm_ckpts/edep_protons64_ae16x16x3/epoch=000120.ckpt` |
-| LDM (v2) | `/n/holystore01/LABS/iaifi_lab/Users/zimani/ldm_ckpts/edep_protons64_v2_ldm/epoch=000075.ckpt` |
+| Dataset | Model | Checkpoint (relative to `ldm_ckpts/`) |
+| --- | --- | --- |
+| protons64 (edep) | Autoencoder (16x16x3) | `protons64_ae16x16x3/epoch=000120.ckpt` |
+| protons64 (edep) | LDM | `protons64_cLDM/epoch=000075.ckpt` |
+| electrons64 | Autoencoder (16x16x3) | `electrons64_ae16x16x3/checkpoints/epoch=000145.ckpt` |
+| electrons64 | LDM | `electrons64_cLDM/checkpoints/epoch=000150.ckpt` |
 
-Each folder also has a `configs/` folder holding the run's saved training config. The LDM v2 was trained on the autoencoder above, and `protons64-ldm-kl.yaml` points to it. The inference loop, sampling and renoising scripts all use the epoch 75 LDM.
+Each folder also has a `configs/` folder holding the run's saved training config. Each LDM was trained on the autoencoder above it, and the LDM configs point to those autoencoders. For protons, the inference loop, sampling and renoising scripts all use the epoch 75 LDM. The electron checkpoint evaluation scripts are in `testing_electrons64/`.
 
 ### 3. Generate events 
 Generate events using `submit_sample.sh`, which runs `run_condLDM.py`. Specify the momentum prompt using the flags px, py, pz. 
@@ -55,7 +64,7 @@ Sampling quality, speed and diversity are controlled by:
 - `--plms`: use the PLMS sampler instead of DDIM, which allows even fewer steps.
 
 ## Adding a dataset 
-Create a new dataloader. Currently using `ldm\data\protons64.py`. Update the autoencoder and diffusion config files to point to the data files. 
+Create a new dataloader class. The proton and electron loaders (`electrons64Train` / `electrons64Validation`) are all in `ldm/data/protons64.py`. Update the autoencoder and diffusion config files to point to the data files. 
 
 ## Analysis Scripts 
 This will be in a seperate repo (coming soon). 
